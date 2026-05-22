@@ -1,0 +1,19 @@
+name: Build APK
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build APK
+        run: ./gradlew assembleFossRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metrolist-fixed
+          path: app/build/outputs/apk/foss/release/*.apk
