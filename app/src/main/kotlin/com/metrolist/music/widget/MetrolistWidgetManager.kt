@@ -211,7 +211,15 @@ class MetrolistWidgetManager @Inject constructor(
                     .crossfade(300)
                     .build()
                 val result = imageLoader.execute(request)
-                result.image?.toBitmap()
+                // toBitmap() returns the raw Coil-managed bitmap. Make an independent software
+                // copy so the widget's cached reference survives cache eviction / system recycling.
+                result.image?.toBitmap()?.let { bmp ->
+                    if (bmp.isRecycled) null
+                    else bmp.copy(
+                        bmp.config?.takeIf { it != Bitmap.Config.HARDWARE } ?: Bitmap.Config.ARGB_8888,
+                        false
+                    )
+                }
             } catch (e: Exception) {
                 null
             }
