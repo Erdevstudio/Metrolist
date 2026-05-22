@@ -537,4 +537,203 @@ class PlaylistWidgetManager @Inject constructor(
             }
         } catch (e: CancellationException) {
             throw e
-       
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getRoundedCornerBitmap(bitmap: Bitmap, cornerRadius: Float): Bitmap {
+        val size = minOf(bitmap.width, bitmap.height)
+        val xOffset = (bitmap.width - size) / 2
+        val yOffset = (bitmap.height - size) / 2
+        val squareBitmap = Bitmap.createBitmap(bitmap, xOffset, yOffset, size, size)
+        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val paint = Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
+            shader = BitmapShader(squareBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+        val rect = RectF(0f, 0f, size.toFloat(), size.toFloat())
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, paint)
+        if (squareBitmap != bitmap) squareBitmap.recycle()
+        return output
+    }
+
+    private fun getFallbackArtwork(item: QuickPick, cornerRadius: Float): Bitmap {
+        val cacheKey = FallbackArtworkKey(
+            targetType = item.targetType,
+            fallbackIconRes = item.fallbackIconRes,
+            cornerRadius = cornerRadius.toInt(),
+        )
+
+        fallbackArtworkCache[cacheKey]?.let { return it }
+
+        val size = 300
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val background = Paint().apply {
+            isAntiAlias = true
+            color = when (item.targetType) {
+                PlaylistWidgetReceiver.TARGET_TYPE_LIKED -> Color.rgb(198, 40, 86)
+                PlaylistWidgetReceiver.TARGET_TYPE_DOWNLOADED -> Color.rgb(38, 128, 118)
+                PlaylistWidgetReceiver.TARGET_TYPE_TOP -> Color.rgb(122, 86, 178)
+                else -> Color.rgb(66, 72, 86)
+            }
+        }
+        val rect = RectF(0f, 0f, size.toFloat(), size.toFloat())
+        canvas.drawRoundRect(rect, cornerRadius, cornerRadius, background)
+
+        val icon = context.getDrawable(item.fallbackIconRes)?.mutate()
+        icon?.setTint(Color.WHITE)
+        val iconSize = 128
+        val iconOffset = (size - iconSize) / 2
+        icon?.setBounds(iconOffset, iconOffset, iconOffset + iconSize, iconOffset + iconSize)
+        icon?.draw(canvas)
+
+        fallbackArtworkCache[cacheKey] = bitmap
+        return bitmap
+    }
+
+    private fun getRoundedAppIcon(cornerRadius: Float): Bitmap {
+        val cacheKey = cornerRadius.toInt()
+        roundedAppIconCache[cacheKey]?.let { return it }
+
+        val drawable = context.packageManager.getApplicationIcon(context.packageName)
+        val size = 300
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(canvas)
+
+        return getRoundedCornerBitmap(bitmap, cornerRadius).also {
+            roundedAppIconCache[cacheKey] = it
+        }
+    }
+
+    private fun getOpenAppIntent(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+        return PendingIntent.getActivity(
+            context,
+            500,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun getOpenTargetIntent(item: QuickPick): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_OPEN_WIDGET_TARGET
+            putExtra(MainActivity.EXTRA_WIDGET_TARGET_TYPE, item.targetType)
+            putExtra(MainActivity.EXTRA_WIDGET_TARGET_ID, item.targetId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            item.key.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun getPlayTargetIntent(item: QuickPick): PendingIntent {
+        val intent = Intent(context, PlaylistWidgetReceiver::class.java).apply {
+            action = PlaylistWidgetReceiver.ACTION_PLAY_TARGET
+            putExtra(PlaylistWidgetReceiver.EXTRA_TARGET_TYPE, item.targetType)
+            putExtra(PlaylistWidgetReceiver.EXTRA_TARGET_ID, item.targetId)
+            putExtra(PlaylistWidgetReceiver.EXTRA_TARGET_TITLE, item.title)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            item.key.hashCode() xor 0x3522,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun getMusicWidgetIntent(
+        action: String,
+        requestCode: Int,
+    ): PendingIntent {
+        val intent = Intent(context, MusicWidgetReceiver::class.java).apply {
+            this.action = action
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private data class WidgetState(
+        val title: String,
+        val artist: String,
+        val artworkUri: String?,
+        val isPlaying: Boolean,
+        val isLiked: Boolean,
+        val duration: Long,
+        val currentPosition: Long,
+    )
+
+    private data class QuickPickSnapshot(
+        val speedDial: List<SpeedDialSnapshot>,
+        val playlists: List<PlaylistSnapshot>,
+        val likedSongs: List<SongSnapshot>,
+        val downloadedSongs: List<SongSnapshot>,
+        val topSongs: List<SongSnapshot>,
+    )
+
+    private data class SpeedDialSnapshot(
+        val type: String,
+        val id: String,
+        val title: String,
+        val thumbnailUrl: String?,
+    )
+
+    private data class PlaylistSnapshot(
+        val id: String,
+        val browseId: String?,
+        val name: String,
+        val thumbnailUrl: String?,
+        val isLocal: Boolean,
+    )
+
+    private data class SongSnapshot(
+        val id: String,
+        val thumbnailUrl: String?,
+    )
+
+    private data class QuickPick(
+        val key: String,
+        val targetType: String,
+        val targetId: String,
+        val title: String,
+        val thumbnailUrl: String?,
+        val fallbackIconRes: Int,
+    )
+
+    private data class CardSlot(
+        val containerId: Int,
+        val artworkId: Int,
+        val playContainerId: Int,
+        val playIconId: Int,
+        val titleId: Int,
+    )
+
+    private data class FallbackArtworkKey(
+        val targetType: String,
+        val fallbackIconRes: Int,
+        val cornerRadius: Int,
+    )
+
+    private val cardSlots = listOf(
+        CardSlot(R.id.widget_playlist_card_1, R.id.widget_playlist_card_1_art, R.id.widget_playlist_card_1_play_container, R.id.widget_playlist_card_1_play, R.id.widget_playlist_card_1_title),
+        CardSlot(R.id.widget_playlist_card_2, R.id.widget_playlist_card_2_art, R.id.widget_playlist_card_2_play_container, R.id.widget_playlist_card_2_play, R.id.widget_playlist_card_2_title),
+        CardSlot(R.id.widget_playlist_card_3, R.id.widget_playlist_card_3_art, R.id.widget_playlist_card_3_play_container, R.id.widget_playlist_card_3_play, R.id.widget_playlist_card_3_title),
+        CardSlot(R.id.widget_playlist_card_4, R.id.widget_playlist_card_4_art, R.id.widget_playlist_card_4_play_container, R.id.widget_playlist_card_4_play, R.id.widget_playlist_card_4_title),
+        CardSlot(R.id.widget_playlist_card_5, R.id.widget_playlist_card_5_art, R.id.widget_playlist_card_5_play_container, R.id.widget_playlist_card_5_play, R.id.widget_playlist_card_5_title),
+        CardSlot(R.id.widget_playlist_card_6, R.id.widget_playlist_card_6_art, R.id.widget_playlist_card_6_play_container, R.id.widget_playlist_card_6_play, R.id.widget_playlist_card_6_title),
+        CardSlot(R.id.widget_playlist_card_7, R.id.widget_playlist_card_7_art, R.id.widget_playlist_card_7_play_container, R.id.widget_playlist_card_7_play, R.id.widget_playlist_card_7_title),
+        CardSlot(R.id.widget_playlist_card_8, R.id.widget_playlist_card_8_art, R.id.widget_playlist_card_8_play_container, R.id.widget_playlist_card_8_play, R.id.widget_playlist_card_8_title),
+    )
+}
