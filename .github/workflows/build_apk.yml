@@ -11,9 +11,9 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - name: Build APK
-        run: ./gradlew assembleFossRelease
+      - name: Build Debug APK
+        run: ./gradlew assembleFossDebug
       - uses: actions/upload-artifact@v4
         with:
           name: metrolist-fixed
-          path: app/build/outputs/apk/foss/release/*.apk
+          path: app/build/outputs/apk/foss/debug/*.apk
