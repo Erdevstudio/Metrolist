@@ -12,23 +12,19 @@ on:
       - ".github/FUNDING.yml"
       - ".github/ISSUE_TEMPLATE/**"
 
+# Memaksa GitHub Actions menggunakan Node.js 24 agar tidak memunculkan warning deprecated
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
   discussions: write
 
 jobs:
   build_release:
-    name: Build Release (${{ matrix.variant }})
+    name: Build Release (Foss)
     if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        include:
-          - variant: foss
-            variantName: Foss
-          - variant: gms
-            variantName: Gms
 
     steps:
       - uses: actions/checkout@v6
@@ -50,8 +46,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Diubah langsung menargetkan ke task FossRelease
       - name: Build Release APK and Run Lint
-        run: ./gradlew --console=plain assemble${{ matrix.variantName }}Release :app:lint${{ matrix.variantName }}Release --warning-mode summary
+        run: ./gradlew --console=plain assembleFossRelease :app:lintFossRelease --warning-mode summary
         env:
           METROLIST_APPLICATION_ID: com.metrolist.music
           METROLIST_APP_NAME: Metrolist Nightly
@@ -60,45 +57,35 @@ jobs:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
 
+      # Path disesuaikan langsung ke folder foss
       - name: Sign APK
         uses: ilharp/sign-android-release@v2.0.0
         with:
-          releaseDir: app/build/outputs/apk/${{ matrix.variant }}/release/
+          releaseDir: app/build/outputs/apk/foss/release/
           signingKey: ${{ secrets.KEYSTORE }}
           keyAlias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
           buildToolsVersion: 35.0.0
 
+      # Logika pengecekan GMS dihapus, langsung output ke nama file FOSS
       - name: Move signed APK
         run: |
-          OUTPUT_DIR="app/build/outputs/apk/${{ matrix.variant }}/release"
+          OUTPUT_DIR="app/build/outputs/apk/foss/release"
           mkdir -p "$OUTPUT_DIR/out"
-          if [ "${{ matrix.variant }}" = "gms" ]; then
-            TARGET_NAME="app-universal-with-Google-Cast.apk"
-          else
-            TARGET_NAME="app-universal-release.apk"
-          fi
+          TARGET_NAME="app-universal-release.apk"
           find "$OUTPUT_DIR" -name "*-signed.apk" -o -name "*-unsigned-signed.apk" | xargs -I{} mv {} "$OUTPUT_DIR/out/$TARGET_NAME"
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.variant == 'gms' && 'app-with-Google-Cast' || 'app-release' }}
-          path: app/build/outputs/apk/${{ matrix.variant }}/release/out/*
+          name: app-release
+          path: app/build/outputs/apk/foss/release/out/*
 
   build_debug:
-    name: Build Debug (${{ matrix.variant }})
+    name: Build Debug (Foss)
     if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        include:
-          - variant: foss
-            variantName: Foss
-          - variant: gms
-            variantName: Gms
 
     steps:
       - uses: actions/checkout@v6
@@ -124,8 +111,9 @@ jobs:
         run: |
           echo "${{ secrets.DEBUG_KEYSTORE }}" | base64 -d > ./app/persistent-debug.keystore
 
+      # Diubah langsung menargetkan ke task FossDebug
       - name: Build Debug APK and Run Lint
-        run: ./gradlew --console=plain assemble${{ matrix.variantName }}Debug :app:lint${{ matrix.variantName }}Debug --warning-mode summary
+        run: ./gradlew --console=plain assembleFossDebug :app:lintFossDebug --warning-mode summary
         env:
           METROLIST_APPLICATION_ID: com.metrolist.music
           METROLIST_APP_NAME: Metrolist Nightly
@@ -137,5 +125,5 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.variant == 'gms' && 'app-debug-gms' || 'app-debug' }}
-          path: app/build/outputs/apk/${{ matrix.variant }}/debug/*.apk
+          name: app-debug
+          path: app/build/outputs/apk/foss/debug/*.apk
